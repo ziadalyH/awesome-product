@@ -1,3 +1,24 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ── Doc content prose styles ── */
+.doc-prose h1 { font-size: 1.5rem; font-weight: 700; margin: 2rem 0 0.75rem; color: #111827; }
+.doc-prose h2 { font-size: 1.25rem; font-weight: 600; margin: 1.5rem 0 0.5rem; color: #111827; }
+.doc-prose h3 { font-size: 1.1rem; font-weight: 600; margin: 1.25rem 0 0.5rem; color: #1f2937; }
+.doc-prose p  { font-size: 0.875rem; color: #374151; line-height: 1.7; margin-bottom: 0.75rem; }
+.doc-prose ul { list-style: disc inside; margin-bottom: 0.75rem; font-size: 0.875rem; color: #374151; }
+.doc-prose ol { list-style: decimal inside; margin-bottom: 0.75rem; font-size: 0.875rem; color: #374151; }
+.doc-prose li { line-height: 1.7; margin-bottom: 0.25rem; }
+.doc-prose a  { color: #2563eb; text-decoration: none; }
+.doc-prose a:hover { text-decoration: underline; }
+.doc-prose code { background: #f3f4f6; color: #db2777; font-size: 0.75rem; padding: 0.1rem 0.3rem; border-radius: 3px; font-family: monospace; }
+.doc-prose pre { background: #1f2937; color: #f9fafb; border-radius: 0.5rem; padding: 1rem; overflow-x: auto; font-size: 0.75rem; font-family: monospace; margin-bottom: 1rem; line-height: 1.6; }
+.doc-prose pre code { background: transparent; color: #f9fafb; padding: 0; }
+.doc-prose blockquote { border-left: 4px solid #d1d5db; padding-left: 1rem; font-style: italic; color: #6b7280; margin: 0.75rem 0; font-size: 0.875rem; }
+.doc-prose table { width: 100%; border-collapse: collapse; margin-bottom: 1rem; font-size: 0.8rem; }
+.doc-prose th { background: #f9fafb; text-align: left; padding: 0.5rem 0.75rem; font-size: 0.75rem; font-weight: 600; color: #4b5563; border: 1px solid #e5e7eb; }
+.doc-prose td { padding: 0.5rem 0.75rem; color: #374151; border: 1px solid #e5e7eb; }
+.doc-prose hr { border-color: #e5e7eb; margin: 1.5rem 0; }
+.doc-prose .highlight { margin-bottom: 1rem; }
+.doc-prose .highlight pre { margin-bottom: 0; }

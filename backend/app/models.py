@@ -4,6 +4,15 @@ from enum import Enum
 from datetime import datetime
 
 
+class DocSection(BaseModel):
+    id: str
+    file: str
+    section_title: str
+    content: str
+    line_start: int
+    line_end: int
+
+
 class SuggestionStatus(str, Enum):
     PENDING = "pending"
     APPROVED = "approved"
@@ -26,10 +35,12 @@ class Session(BaseModel):
     suggestions: List[EditSuggestion]
     created_at: datetime
     saved: bool = False
+    retrieval_mode: str = "triage"  # which mode produced this session
 
 
 class QueryRequest(BaseModel):
     query: str
+    retrieval_mode: str = "triage"  # "triage" or "rag"
 
 
 class UpdateSuggestionRequest(BaseModel):

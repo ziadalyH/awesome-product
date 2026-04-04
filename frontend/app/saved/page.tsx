@@ -32,7 +32,7 @@ export default async function SavedPage() {
   const saved = sessions.filter((s) => s.saved);
 
   return (
-    <div>
+    <div className="max-w-4xl mx-auto px-6 py-10">
       <div className="mb-8">
         <h1 className="text-2xl font-bold mb-1">Saved Results</h1>
         <p className="text-gray-500 text-sm">{saved.length} saved session{saved.length !== 1 ? "s" : ""}</p>
@@ -66,7 +66,7 @@ export default async function SavedPage() {
                   </p>
                 </div>
                 <Link
-                  href={`/review?session=${s.session_id}`}
+                  href={`/editor?session=${s.session_id}`}
                   className="shrink-0 text-sm px-3 py-1.5 rounded-md border border-gray-300 hover:bg-gray-50"
                 >
                   View

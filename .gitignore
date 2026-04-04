@@ -15,3 +15,15 @@ node_modules/
 
 # OS
 .DS_Store
+
+# IDE
+.vscode/
+
+# Large data / cache files (not for source control)
+docs_cache.json
+docs_dump.json
+embeddings_cache.json
+openai_agents_python_docs.txt
+
+# Scripts / dev utilities
+backend/scripts/
