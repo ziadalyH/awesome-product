@@ -265,7 +265,7 @@ function DocBlock({
 /* ─── Main Page ──────────────────────────────────────────────────────── */
 export default function Home() {
   const [query, setQuery] = useState("");
-  const [retrievalMode, setRetrievalMode] = useState<"triage" | "rag" | "hybrid">("triage");
+  const [retrievalMode, setRetrievalMode] = useState<"triage" | "rag" | "hybrid" | "auto">("triage");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [session, setSession] = useState<Session | null>(null);
@@ -319,7 +319,7 @@ export default function Home() {
     );
   };
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!query.trim()) return;
     setLoading(true);
@@ -481,7 +481,7 @@ export default function Home() {
 
             {/* Retrieval mode toggle */}
             <div className="flex items-center shrink-0 rounded-lg border border-gray-200 overflow-hidden text-xs font-medium">
-              {(["triage", "rag", "hybrid"] as const).map((mode) => (
+              {(["triage", "rag", "hybrid", "auto"] as const).map((mode) => (
                 <button
                   key={mode}
                   type="button"
@@ -554,9 +554,11 @@ export default function Home() {
                 ? "bg-purple-100 text-purple-700"
                 : session.retrieval_mode === "hybrid"
                 ? "bg-orange-100 text-orange-700"
+                : session.retrieval_mode === "auto"
+                ? "bg-green-100 text-green-700"
                 : "bg-blue-100 text-blue-700"
             }`}>
-              {session.retrieval_mode === "rag" ? "RAG" : session.retrieval_mode === "hybrid" ? "Hybrid" : "Triage"} mode
+              {session.retrieval_mode === "rag" ? "RAG" : session.retrieval_mode === "hybrid" ? "Hybrid" : session.retrieval_mode === "auto" ? "Auto" : "Triage"} mode
             </span>
           </div>
 

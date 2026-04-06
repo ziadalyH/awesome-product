@@ -135,6 +135,64 @@ For production, consider:
 - Fine-tuned model for section identification
 - User feedback loop to improve accuracy
 
+---
+
+## Planned Improvements
+
+### 1. User-Driven Section Selection (High Priority)
+
+**Problem:** The pipeline currently processes all retrieved sections automatically, which causes:
+- Editor generating cosmetic/no-op suggestions on irrelevant sections
+- Long processing times (25 sections × editor calls = timeouts)
+- No user control over what gets processed
+
+**Proposed Solution:**
+
+Split the pipeline into two explicit user-triggered phases:
+
+**Phase 1 — Discovery** (runs immediately on query submit):
+```
+Stage 1: Validator
+Stage 2: Signal Extractor  → change_type, old_terms, affects_code
+Stage 3: Retrieval         → list of affected section IDs
+```
+Returns the section list to the frontend instantly — no LLM editor calls yet.
+
+**Phase 2 — Generation** (runs only on user selection):
+```
+User reviews section list, checks the ones they want
+→ clicks "Generate Suggestions"
+Stage 4: Pre-check         → filter already-applied sections
+Stage 5: Editor            → generate suggestions for selected sections only
+```
+
+**Why this is better:**
+- User sees what will be changed before any suggestions are generated
+- No wasted API calls on irrelevant sections
+- No arbitrary caps needed — user decides the scope
+- Solves "current and suggested look the same" — user filters out incidental mentions upfront
+- Much faster initial response
+
+**Frontend changes needed:**
+- After query submit, show a checklist of retrieved sections
+- "Generate Suggestions" button triggers Phase 2 on checked sections only
+- Selected sections passed as `section_ids` in the request body
+
+### 2. Section Type Tagging (Quick Win)
+
+**Problem:** `release` page changelog entries (e.g. `0.9.0`, `0.13.0`) are retrieved as candidates and sometimes suggested for editing — but changelog entries are historical records and should never be modified.
+
+**Solution:** Tag sections at index time with `section_type: "content" | "changelog" | "example"` based on their `page_id`. Exclude `changelog` sections from all retrieval strategies.
+
+### 3. Signal Extractor — Enforce Short Identifiers
+
+**Problem:** Signal extractor sometimes returns natural language phrases as `old_terms` (e.g. `"agents as_tool"` instead of `"as_tool"`), causing exact scan to find 0 hits.
+
+**Solution:** Add explicit rules to the signal extractor prompt:
+- Always extract the bare code identifier, never surrounding words
+- `"agents as_tool"` → `["as_tool", "Agent.as_tool", ".as_tool("]`
+- Include all syntactic variations of the identifier
+
 ## Configuration
 
 You can tune the pipeline behavior in `backend/app/pipeline_config.py`:

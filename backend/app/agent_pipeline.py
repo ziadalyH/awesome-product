@@ -17,11 +17,18 @@ from .models import DocSection, EditSuggestion, SuggestionStatus
 from .pipeline_config import DEFAULT_CONFIG, PipelineConfig
 from .rag_retriever import RagRetriever
 from .hybrid_retriever import HybridRetriever
+from .auto_retriever import auto_retrieve
 
 
 class TriageResult(BaseModel):
     """Structured output from triage agent"""
     section_ids: List[str]
+    reasoning: str
+
+
+class PreCheckResult(BaseModel):
+    """Structured output from pre-check agent"""
+    already_applied_ids: List[str]
     reasoning: str
 
 
@@ -240,6 +247,73 @@ Be thorough but precise - only include sections that genuinely need changes.""",
     )
 
 
+async def _filter_already_applied(
+    query: str,
+    section_ids: List[str],
+    docs: Dict[str, List[DocSection]],
+    model: str,
+    logger: logging.Logger,
+) -> List[str]:
+    """
+    Check each candidate section to see if the requested change is already applied.
+    Returns only the section IDs that still need updating.
+    """
+    section_map: Dict[str, DocSection] = {
+        s.id: s
+        for page_sections in docs.values()
+        for s in page_sections
+    }
+
+    sections_text = ""
+    for sid in section_ids:
+        sec = section_map.get(sid)
+        if not sec:
+            continue
+        sections_text += f"\n---\nID: {sid}\nTitle: {sec.section_title}\nContent:\n{sec.content}\n"
+
+    if not sections_text:
+        return section_ids
+
+    agent = Agent(
+        name="Pre-check Agent",
+        model=model,
+        output_type=PreCheckResult,
+        instructions=f"""You are checking whether a documentation change has already been applied.
+
+Change request: "{query}"
+
+For each section below, determine if the change described in the request has ALREADY been fully applied to its content.
+
+{sections_text}
+
+Rules:
+- Mark a section as already applied ONLY if its content clearly and fully reflects the requested change
+- If the section partially reflects the change, or could still be improved to match the request, do NOT mark it as already applied
+- Be strict: when in doubt, assume the change has NOT been applied yet
+
+Return:
+- already_applied_ids: list of section IDs where the change is already fully applied
+- reasoning: one-line explanation""",
+    )
+
+    try:
+        result = await Runner.run(agent, input=query)
+        if result.final_output:
+            pre_check: PreCheckResult = result.final_output
+            already_applied = set(pre_check.already_applied_ids)
+            remaining = [sid for sid in section_ids if sid not in already_applied]
+            logger.info(
+                f"Pre-check | total={len(section_ids)} | "
+                f"already_applied={len(already_applied)} | remaining={len(remaining)} | "
+                f"{pre_check.reasoning}"
+            )
+            return remaining
+    except Exception as e:
+        logger.error(f"Pre-check failed, proceeding with all candidates: {e}")
+
+    return section_ids
+
+
 async def run_pipeline(
     query: str,
     docs: Dict[str, List[DocSection]],
@@ -321,6 +395,23 @@ async def run_pipeline(
             logger.error(f"Hybrid retrieval failed: {e}", exc_info=True)
             return []
 
+    elif config.retrieval_mode == "auto":
+        # --- Auto path (signal extraction + strategy routing) ------------
+        try:
+            target_section_ids, signal = await auto_retrieve(
+                query=query,
+                docs=docs,
+                rag_retriever=retriever,
+                section_index=section_index,
+                model=config.triage_model,
+                rag_top_k=config.rag_top_k,
+                logger=logger,
+            )
+            logger.info(f"Auto retrieval complete | sections={len(target_section_ids)}")
+        except Exception as e:
+            logger.error(f"Auto retrieval failed: {e}", exc_info=True)
+            return []
+
     else:
         # --- Triage agent path (original) --------------------------------
         try:
@@ -347,6 +438,19 @@ async def run_pipeline(
         return []
 
     # ------------------------------------------------------------------ #
+    # Stage 1.5: Pre-check — skip sections already reflecting the change  #
+    # ------------------------------------------------------------------ #
+    try:
+        target_section_ids = await _filter_already_applied(
+            query, target_section_ids, docs, config.triage_model, logger
+        )
+        if not target_section_ids:
+            logger.info("All sections already reflect the requested change — nothing to update")
+            return []
+    except Exception as e:
+        logger.error(f"Pre-check stage failed, proceeding with all candidates: {e}", exc_info=True)
+
+    # ------------------------------------------------------------------ #
     # Stage 2: Editor — shared by both modes                              #
     # ------------------------------------------------------------------ #
     try:
@@ -358,10 +462,13 @@ async def run_pipeline(
         )
 
         editor_agent = _build_editor_agent(target_section_ids, config)
+        # Each section needs ~2 tool calls (get_section + submit_suggestion) + buffer
+        max_turns = len(target_section_ids) * 3 + 5
         await Runner.run(
             editor_agent,
             input=f"User request: {query}\n\nProcess the sections listed in your instructions.",
             context=context,
+            max_turns=max_turns,
         )
 
         logger.info(f"Editor complete | suggestions={len(context.suggestions)}")

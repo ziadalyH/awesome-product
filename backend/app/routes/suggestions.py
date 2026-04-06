@@ -18,7 +18,7 @@ async def submit_query(request: QueryRequest):
     Set retrieval_mode to 'triage' (default) or 'rag' to compare approaches."""
     from app.main import doc_fetcher, rag_retriever, hybrid_retriever
 
-    if request.retrieval_mode not in ("triage", "rag", "hybrid"):
+    if request.retrieval_mode not in ("triage", "rag", "hybrid", "auto"):
         from fastapi import HTTPException
         raise HTTPException(status_code=400, detail="retrieval_mode must be 'triage' or 'rag'")
 
@@ -34,7 +34,7 @@ async def submit_query(request: QueryRequest):
         f"docs_loaded={len(doc_fetcher.docs)} pages | total_sections={total_sections}"
     )
 
-    if request.retrieval_mode in ("rag", "hybrid") and not rag_retriever._ready:
+    if request.retrieval_mode in ("rag", "hybrid", "auto") and not rag_retriever._ready:
         raise HTTPException(
             status_code=503,
             detail="RAG index is not ready. The embeddings build may have failed on startup — check backend logs."
@@ -48,7 +48,7 @@ async def submit_query(request: QueryRequest):
             docs=doc_fetcher.docs,
             logger=logger,
             config=config,
-            retriever=rag_retriever if request.retrieval_mode == "rag" else None,
+            retriever=rag_retriever if request.retrieval_mode in ("rag", "auto") else None,
             hybrid_retriever=hybrid_retriever if request.retrieval_mode == "hybrid" else None,
         )
         

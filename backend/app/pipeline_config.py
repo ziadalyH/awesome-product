@@ -12,7 +12,7 @@ class PipelineConfig:
     # --- RAG settings ---
     # "triage" uses the LLM triage agent (original behaviour)
     # "rag"    uses OpenAI embeddings + cosine similarity
-    retrieval_mode: Literal["triage", "rag", "hybrid"] = "triage"
+    retrieval_mode: Literal["triage", "rag", "hybrid", "auto"] = "triage"
     rag_top_k: int = 10           # top-K for pure RAG mode
     hybrid_rag_top_k: int = 20    # top-K for hybrid RAG stage
     rag_embedding_model: str = "text-embedding-3-small"
