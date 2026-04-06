@@ -1,24 +1,16 @@
 """
-Hybrid retrieval: intent extraction + RAG + code-pattern scan + LLM filter.
-
-Stage 0 — Intent extraction:     LLM translates the query into concrete code
-                                   patterns to search for (e.g. "sync calls" → "run_sync")
-Stage 1 — RAG (semantic):        top-K sections by embedding similarity
-Stage 2 — Code scan (structural): sections whose code blocks contain the extracted patterns
-Stage 3 — Union:                  deduplicated combined candidates
-Stage 4 — LLM filter (verify):   reads actual section content, keeps only sections
-                                   that genuinely need updating
+Hybrid retrieval: intent extraction + RAG + code scan + LLM filter.
 """
-
 import re
 import logging
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 from pydantic import BaseModel
 from agents import Agent, Runner
 
-from .models import DocSection
-from .rag_retriever import RagRetriever
+from app.models import DocSection
+from app.pipeline.retrieval.base import BaseRetriever
+from app.pipeline.retrieval.rag import RagRetriever
 
 
 class _IntentResult(BaseModel):
@@ -31,30 +23,17 @@ class _FilterResult(BaseModel):
     reasoning: str
 
 
-class HybridRetriever:
-    """
-    Four-stage retrieval combining intent extraction, semantic search,
-    structural code scanning, and LLM-based content verification.
-    """
-
-    def __init__(self, rag: RagRetriever, model: str = "gpt-4o-mini"):
-        self.rag = rag
-        self.model = model
+class HybridRetriever(BaseRetriever):
+    def __init__(self, rag: RagRetriever, model: str = "gpt-4o-mini", rag_top_k: int = 20):
+        self._rag = rag
+        self._model = model
+        self._rag_top_k = rag_top_k
         self.logger = logging.getLogger(__name__)
 
-    # ------------------------------------------------------------------ #
-    # Stage 0 — Intent extraction                                          #
-    # ------------------------------------------------------------------ #
-
     async def _extract_intent(self, query: str) -> List[str]:
-        """
-        Ask the LLM what concrete code patterns the query refers to.
-        e.g. "sync calls"  → ["run_sync", "Runner.run_sync"]
-             "old API name" → ["OldClass", "old_method"]
-        """
         agent = Agent(
             name="Intent Extractor",
-            model=self.model,
+            model=self._model,
             output_type=_IntentResult,
             instructions="""You are a code-pattern extractor for an OpenAI Agents SDK documentation system.
 
@@ -73,81 +52,49 @@ Return:
 
 If no specific code patterns can be inferred, return an empty list.""",
         )
-
         try:
             result = await Runner.run(agent, input=query)
             if result.final_output:
                 intent: _IntentResult = result.final_output
-                self.logger.info(
-                    f"Intent extraction | patterns={intent.code_patterns} | {intent.reasoning}"
-                )
+                self.logger.info(f"Intent extraction | patterns={intent.code_patterns} | {intent.reasoning}")
                 return intent.code_patterns
         except Exception as e:
             self.logger.error(f"Intent extraction failed: {e}")
-
         return []
 
-    # ------------------------------------------------------------------ #
-    # Stage 2 — Code scan                                                  #
-    # ------------------------------------------------------------------ #
-
-    def _code_scan(
-        self, patterns: List[str], docs: Dict[str, List[DocSection]]
-    ) -> List[str]:
-        """
-        Find sections whose code blocks (or full content) contain any of
-        the extracted patterns.
-        """
+    def _code_scan(self, patterns: List[str], docs: Dict[str, List[DocSection]]) -> List[str]:
         if not patterns:
             return []
-
         hits: List[str] = []
         for page_sections in docs.values():
             for section in page_sections:
                 code_blocks = re.findall(r'```[\s\S]*?```', section.content)
-                searchable = ('\n'.join(code_blocks) or section.content)
+                searchable = '\n'.join(code_blocks) or section.content
                 if any(p in searchable for p in patterns):
                     hits.append(section.id)
-
         self.logger.info(f"Code scan | patterns={patterns} | hits={len(hits)}")
         return hits
 
-    # ------------------------------------------------------------------ #
-    # Stage 4 — LLM filter                                                #
-    # ------------------------------------------------------------------ #
-
     async def _llm_filter(
-        self,
-        query: str,
-        candidate_ids: List[str],
-        docs: Dict[str, List[DocSection]],
+        self, query: str, candidate_ids: List[str], docs: Dict[str, List[DocSection]]
     ) -> List[str]:
-        """
-        Read actual section content and keep only sections that genuinely
-        need updating. All candidates are batched into a single LLM call.
-        """
         section_map: Dict[str, DocSection] = {
-            s.id: s
-            for page_sections in docs.values()
-            for s in page_sections
+            s.id: s for page_sections in docs.values() for s in page_sections
         }
-
         sections_text = ""
         for sid in candidate_ids:
             sec = section_map.get(sid)
             if not sec:
                 continue
             preview = sec.content[:500] + ("…" if len(sec.content) > 500 else "")
-            sections_text += (
-                f"\n---\nID: {sid}\nTitle: {sec.section_title}\nContent:\n{preview}\n"
-            )
+            sections_text += f"\n---\nID: {sid}\nTitle: {sec.section_title}\nContent:\n{preview}\n"
 
         if not sections_text:
             return []
 
         agent = Agent(
             name="Relevance Filter",
-            model=self.model,
+            model=self._model,
             output_type=_FilterResult,
             instructions=f"""You are a documentation relevance filter.
 
@@ -168,47 +115,32 @@ Return:
 - section_ids: list of IDs that need updating (may be empty)
 - reasoning: one-line explanation""",
         )
-
         try:
             result = await Runner.run(agent, input=query)
             if result.final_output:
                 filtered: _FilterResult = result.final_output
                 self.logger.info(
-                    f"LLM filter | candidates={len(candidate_ids)} → "
-                    f"kept={len(filtered.section_ids)} | {filtered.reasoning}"
+                    f"LLM filter | candidates={len(candidate_ids)} → kept={len(filtered.section_ids)} | {filtered.reasoning}"
                 )
                 return filtered.section_ids
         except Exception as e:
             self.logger.error(f"LLM filter failed, returning all candidates: {e}")
-
-        return candidate_ids  # fallback
-
-    # ------------------------------------------------------------------ #
-    # Public API                                                           #
-    # ------------------------------------------------------------------ #
+        return candidate_ids
 
     async def retrieve(
         self,
         query: str,
         docs: Dict[str, List[DocSection]],
-        rag_top_k: int = 20,
+        section_index: List[Dict],
     ) -> List[str]:
-        """
-        Full hybrid retrieval pipeline.
-        Returns a deduplicated, LLM-verified list of section IDs to edit.
-        """
-        # Stage 0: Extract concrete code patterns from query
         patterns = await self._extract_intent(query)
 
-        # Stage 1: RAG — semantic candidates
-        rag_results = await self.rag.retrieve(query, top_k=rag_top_k)
+        rag_results = await self._rag.retrieve_scored(query, top_k=self._rag_top_k)
         rag_ids = [sid for sid, _ in rag_results]
         self.logger.info(f"Hybrid | RAG candidates: {len(rag_ids)}")
 
-        # Stage 2: Code scan — structural candidates using extracted patterns
         code_ids = self._code_scan(patterns, docs)
 
-        # Stage 3: Union (code scan first — higher confidence, then RAG additions)
         seen: set = set(code_ids)
         combined = list(code_ids)
         for sid in rag_ids:
@@ -217,7 +149,6 @@ Return:
                 seen.add(sid)
         self.logger.info(f"Hybrid | combined candidates (code scan + RAG): {len(combined)}")
 
-        # Stage 4: LLM filter — content verification
         verified = await self._llm_filter(query, combined, docs)
         self.logger.info(f"Hybrid | final verified sections: {len(verified)}")
         return verified

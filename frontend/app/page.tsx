@@ -212,7 +212,6 @@ function DocBlock({
     : "";
 
   if (suggestion && sessionId && onUpdate) {
-    // Side-by-side layout when there's a suggestion
     return (
       <div
         className={`mb-8 ${highlight} py-4`}
@@ -221,30 +220,11 @@ function DocBlock({
         <h3 className="text-xl font-bold text-gray-900 mb-4">
           {section.section_title}
         </h3>
-        <div className="grid grid-cols-2 gap-6">
-          {/* Left: Current documentation */}
-          <div>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-              Current Documentation
-            </p>
-            <div className="bg-white border border-gray-200 rounded-lg p-4">
-              <pre className="text-sm text-gray-700 whitespace-pre-wrap font-sans leading-relaxed">
-                {section.content}
-              </pre>
-            </div>
-          </div>
-          {/* Right: Suggestion panel */}
-          <div>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-              Suggested Changes
-            </p>
-            <SuggestionPanel
-              suggestion={suggestion}
-              sessionId={sessionId}
-              onUpdate={onUpdate}
-            />
-          </div>
-        </div>
+        <SuggestionPanel
+          suggestion={suggestion}
+          sessionId={sessionId}
+          onUpdate={onUpdate}
+        />
       </div>
     );
   }
@@ -265,7 +245,7 @@ function DocBlock({
 /* ─── Main Page ──────────────────────────────────────────────────────── */
 export default function Home() {
   const [query, setQuery] = useState("");
-  const [retrievalMode, setRetrievalMode] = useState<"triage" | "rag" | "hybrid" | "auto">("triage");
+  const [retrievalMode] = useState<"triage" | "rag" | "hybrid" | "auto">("auto");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [session, setSession] = useState<Session | null>(null);
@@ -479,23 +459,6 @@ export default function Home() {
               className="flex-1 text-sm bg-transparent focus:outline-none text-gray-800 placeholder:text-gray-400"
             />
 
-            {/* Retrieval mode toggle */}
-            <div className="flex items-center shrink-0 rounded-lg border border-gray-200 overflow-hidden text-xs font-medium">
-              {(["triage", "rag", "hybrid", "auto"] as const).map((mode) => (
-                <button
-                  key={mode}
-                  type="button"
-                  onClick={() => setRetrievalMode(mode)}
-                  className={`px-3 py-1.5 transition-colors ${
-                    retrievalMode === mode
-                      ? "bg-gray-900 text-white"
-                      : "text-gray-500 hover:bg-gray-50"
-                  }`}
-                >
-                  {mode.toUpperCase()}
-                </button>
-              ))}
-            </div>
 
             <button
               type="submit"
