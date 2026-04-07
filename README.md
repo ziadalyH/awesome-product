@@ -74,6 +74,11 @@ Approved suggestions overwrite `docs_cache.json` directly. A production version 
 
 Suggestions are matched back to doc sections by `section_title`. If the AI rephrases a title slightly, the match silently fails. A production version would match on `section.id` (the stable `page#slug` key) end-to-end.
 
+
+### Single documentation source
+
+The pipeline is hardwired to one source. A production version would support multiple sources (e.g. OpenAI Agents SDK and Claude docs), each with its own cache and RAG index, selectable per query.
+
 ### No streaming progress
 
 The frontend shows a spinner for the full pipeline run with no intermediate feedback. A production version would stream stage completion events via SSE.
@@ -94,9 +99,6 @@ The suggestion panel shows full current and suggested content as plain text in a
 
 A production version would have unit tests per pipeline stage (using mocked OpenAI responses), integration tests against a fixed doc fixture, and contract tests for frontend API calls.
 
-### Single documentation source
-
-The pipeline is hardwired to one source. A production version would support multiple sources (e.g. OpenAI Agents SDK and Claude docs), each with its own cache and RAG index, selectable per query.
 
 ### No containerisation
 
