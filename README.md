@@ -2,59 +2,26 @@
 
 AI-powered documentation update assistant for the OpenAI Agents SDK.
 
-## What it does
-
-1. User enters a query describing what changed or what to update
-2. AI analyzes the cached documentation (`docs_cache.json`), finds relevant sections, and suggests edits
-3. User reviews each suggestion in the editor: approve, reject, or edit
-4. Approved changes are saved back to `docs_cache.json`
-
-## Architecture
-
-```
-Next.js (port 3000) → FastAPI Backend (port 8000) → AI Agent Pipeline
-```
-
-- **backend/**: REST API, loads docs from `docs_cache.json`, calls AI agent pipeline, stores sessions in memory
-- **frontend/**: Query input, documentation editor with inline suggestions, approve/reject/edit UI
-- **docs_cache.json**: Cached documentation scraped from OpenAI Agents SDK (updated when suggestions are approved)
-
-## Using the app
-
-1. **Enter a query** — describe what changed in the SDK or what you want updated (e.g. *"We removed support for agents.as_tool()"*).
-2. **Choose a retrieval mode** — pick how the AI finds relevant doc sections:
-   - `triage` — LLM scans all section titles and picks the relevant ones (accurate, slower)
-   - `rag` — vector similarity search (fast)
-   - `hybrid` — RAG shortlists candidates, LLM re-ranks them (balanced)
-   - `auto` — extracts signals from your query and picks the best strategy automatically
-3. **Wait for the pipeline** — the AI validates your query, retrieves relevant sections, filters out ones that don't need changes, and generates edit suggestions for the rest (30–90 seconds depending on mode).
-4. **Review suggestions** — each affected doc section appears with a suggestion panel. For each one:
-   - Switch between **Current** and **Suggested** tabs to compare
-   - Click **Approve** to accept, **Reject** to discard, or edit the suggested content inline before approving
-5. **Save** — once you've reviewed all suggestions, click **Save**. Approved changes are written back to `docs_cache.json`.
-
 ---
 
-## Running locally
-
-> **macOS Users:** See [SETUP_MACOS.md](SETUP_MACOS.md) for detailed setup instructions.
+## Quick Start
 
 ### Prerequisites
 
 - Python 3.12+
-- Node.js 22+ & pnpm
+- Node.js 22+ with pnpm
 - OpenAI API key
 
-### Backend
+### 1. Backend
 
 ```bash
 cd backend
-cp .env.example .env  # add your OPENAI_API_KEY
+cp .env.example .env   # add your OPENAI_API_KEY
 pip install -r requirements.txt
 uvicorn app.main:app --port 8000 --reload
 ```
 
-### Frontend
+### 2. Frontend
 
 ```bash
 cd frontend
@@ -64,113 +31,77 @@ pnpm dev
 
 Open http://localhost:3000
 
-### Refreshing the documentation cache
+---
 
-The `docs_cache.json` file contains scraped documentation from the OpenAI Agents SDK. To refresh it:
+## How it works
+
+1. Enter a query describing what changed in the SDK (e.g. *"We removed support for agents.as_tool()"*)
+2. The AI pipeline validates your query, retrieves relevant doc sections, filters out unchanged ones, and generates edit suggestions
+3. Review each suggestion — compare current vs. suggested content, then approve, reject, or edit inline
+4. Click **Save** — approved changes are written back to `docs_cache.json`
+
+The pipeline typically takes 30–90 seconds to complete.
+
+---
+
+## Useful scripts
+
+**Refresh the documentation cache** (re-scrapes the OpenAI Agents SDK site):
 
 ```bash
 cd backend
 python3 scripts/refresh_docs_cache.py
 ```
 
-### Testing the AI pipeline
-
-To test the agent pipeline locally without running the full app:
+**Test the AI pipeline without the UI:**
 
 ```bash
 cd backend
 python3 scripts/test_pipeline.py "Your query here"
-
-# Example:
-python3 scripts/test_pipeline.py "We removed support for agents.as_tool() method"
 ```
 
-This will show you what sections the AI identifies and what suggestions it generates.
+---
 
-## Trade-offs (conscious shortcuts)
+## Architecture
 
-### Storage
+```
+Next.js (port 3000) → FastAPI backend (port 8000) → AI agent pipeline
+```
 
-**What we did:** Sessions are stored in `InMemorySessionStore` — a plain Python dict. Everything is lost on restart.
-
-**Production approach:** A persistent store (PostgreSQL or SQLite to start) with a proper `SessionStore` implementation. The `SessionStore` ABC is already in place — swapping the implementation is one class. Would also store `previous_content` per suggestion to enable rollback.
+- `backend/` — REST API, loads docs from `docs_cache.json`, runs the AI pipeline, stores sessions in memory
+- `frontend/` — query input, doc editor with inline suggestions, approve/reject/edit UI
+- `docs_cache.json` — scraped documentation from the OpenAI Agents SDK; updated when suggestions are approved
 
 ---
 
-### Documentation source
+## Known shortcuts (not production-ready)
 
-**What we did:** Docs are scraped from the OpenAI Agents SDK website on first run and cached in `docs_cache.json` — a flat JSON file on disk. Approved suggestions overwrite this file directly.
+### Sessions stored in memory
+Sessions live in a plain Python dict and are lost on restart. A production version would use a persistent store (PostgreSQL or SQLite) with the `SessionStore` ABC already in place — swapping the implementation is one class.
 
-**Production approach:** Store docs in a database table keyed by section ID. Refresh on a schedule or via webhook when the upstream SDK repo publishes a new release. Approved suggestions would open a pull request via the GitHub API rather than writing to a local file.
+### Docs stored as a flat JSON file
+Approved suggestions overwrite `docs_cache.json` directly. A production version would store docs in a database, refresh on a schedule or via webhook, and open a pull request via the GitHub API instead of writing to a local file.
 
----
+### Embeddings stored as a flat JSON file
+`embeddings_cache.json` is rebuilt from scratch on every save. A production version would use a vector database (Pinecone, ChromaDB, pgvector) and only re-embed changed sections.
 
-### Embeddings cache
+### Section matching uses title as join key
+Suggestions are matched back to doc sections by `section_title`. If the AI rephrases a title slightly, the match silently fails. A production version would match on `section.id` (the stable `page#slug` key) end-to-end.
 
-**What we did:** RAG embeddings for all 329 sections are stored in `embeddings_cache.json` — a flat JSON file on disk. The cache is rebuilt from scratch every time approved suggestions are saved.
+### No streaming progress
+The frontend shows a spinner for the full pipeline run with no intermediate feedback. A production version would stream stage completion events via SSE.
 
-**Production approach:** Store embeddings in a vector database (Pinecone, ChromaDB, or pgvector). Invalidate and re-embed only the sections that changed, not the full corpus.
+### No authentication
+Any request to the API is accepted. A production version would use JWT-based auth with sessions scoped to a user and an audit trail of approvals.
 
----
+### Single-file frontend
+All UI lives in one `page.tsx` — types, components, state, and API calls co-located. A production version would split into component files, extract API calls into a service layer, and add a shared types file.
 
-### Section matching
+### No diff view
+The suggestion panel shows full current and suggested content as plain text in a tab switcher. TipTap is already installed but not wired up — a production version would render a word-level or line-level diff inline.
 
-**What we did:** Suggestions are matched back to `DocSection` objects using `section_title` as the join key. If the AI slightly rephrases a title, the match silently fails and the section renders without a suggestion panel.
+### No tests
+A production version would have unit tests per pipeline stage (using mocked OpenAI responses), integration tests against a fixed doc fixture, and contract tests for frontend API calls.
 
-**Production approach:** Match on `section.id` (the stable `page#slug` key) end-to-end. The editor agent already receives section IDs — the suggestion should store and return the ID, not the title.
-
----
-
-### Pipeline progress
-
-**What we did:** The frontend shows a spinner for the full 30–90 second pipeline run with no intermediate feedback.
-
-**Production approach:** Stream stage completion events via Server-Sent Events. The frontend would show a live progress indicator — validator done, retrieval done (N sections found), precheck done (M remaining), editor in progress (K/M sections processed).
-
----
-
-### Authentication
-
-**What we did:** No authentication. Any request to the API is accepted.
-
-**Production approach:** JWT-based auth (e.g. `fastapi-users`). Sessions would be scoped to a user, and the suggestion approval workflow would carry an audit trail of who approved what.
-
----
-
-### Frontend architecture
-
-**What we did:** The entire frontend UI lives in a single `page.tsx` file — types, components, state, and API calls all co-located. No separate component files, no custom hooks.
-
-**Production approach:** Split into proper component files (`SuggestionPanel`, `DocBlock`, `QueryBar`), extract API calls into a service layer or React Query hooks, and add a shared types file. This keeps each piece independently testable and maintainable.
-
----
-
-### Diff view
-
-**What we did:** The suggestion panel shows full `current_content` and `suggested_content` as plain text in a tab switcher. The reviewer has to mentally diff them.
-
-**Production approach:** Word-level or line-level diff rendered inline, highlighting exactly what changed. TipTap is already installed in the frontend for this purpose but not yet wired up.
-
----
-
-### Error handling & observability
-
-**What we did:** Basic `try/except` blocks throughout the pipeline. Errors are logged to stdout. No retries, no alerting.
-
-**Production approach:** Structured logging with a correlation ID per request, retry logic with exponential backoff for OpenAI API calls, dead-letter storage for failed pipeline runs, and an observability dashboard (Datadog, Grafana) for latency and error rates per pipeline stage.
-
----
-
-### Tests
-
-**What we did:** No automated tests.
-
-**Production approach:** Unit tests for each pipeline stage in isolation (validator, retriever, precheck, editor) using mocked OpenAI responses. Integration tests for the full pipeline against a fixed doc fixture. Contract tests for the frontend API calls.
-
----
-
-### Deployment
-
-**What we did:** The backend and frontend are run as separate dev servers (`uvicorn --reload` and `pnpm dev`). No containerisation or production deployment config exists.
-
-**Production approach:** Each service gets a production Dockerfile (multi-stage build, no `--reload`, `next build` + `next start`). A `docker-compose.yml` or Kubernetes manifests wire them together with health checks and proper secret injection. The `next.config.ts` API rewrite destination would be driven by a `BACKEND_URL` env var instead of the hardcoded `localhost:8000`.
+### Single documentation source
+The pipeline is hardwired to one source. A production version would support multiple sources (e.g. OpenAI Agents SDK and Claude docs), each with its own cache and RAG index, selectable per query.
