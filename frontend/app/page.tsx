@@ -3,8 +3,11 @@
 import { useState, useEffect } from "react";
 
 /* ─── Types ──────────────────────────────────────────────────────────── */
+
+/** Approval lifecycle state of a suggestion. */
 type SuggestionStatus = "pending" | "approved" | "rejected";
 
+/** An AI-generated proposal to update a single documentation section. */
 interface EditSuggestion {
   id: string;
   file: string;
@@ -15,14 +18,17 @@ interface EditSuggestion {
   status: SuggestionStatus;
 }
 
+/** A pipeline session returned by `POST /api/query`. */
 interface Session {
   session_id: string;
   query: string;
   suggestions: EditSuggestion[];
   saved: boolean;
+  /** The retrieval mode that produced this session (triage/rag/hybrid/auto). */
   retrieval_mode: string;
 }
 
+/** A single parsed section of a documentation page. */
 interface DocSection {
   id: string;
   file: string;
@@ -33,6 +39,8 @@ interface DocSection {
 }
 
 /* ─── Status badge ───────────────────────────────────────────────────── */
+
+/** Pill badge that colours itself based on suggestion status. */
 function Badge({ status }: { status: SuggestionStatus }) {
   const cls = {
     pending: "bg-yellow-100 text-yellow-700",
@@ -47,6 +55,15 @@ function Badge({ status }: { status: SuggestionStatus }) {
 }
 
 /* ─── Suggestion Panel - Compact for side-by-side view ───────────────── */
+
+/**
+ * Compact suggestion card used in the main page's right-column view.
+ * Supports approve/reject actions and inline content editing.
+ *
+ * @param suggestion - The suggestion to display.
+ * @param sessionId  - Parent session ID used when PATCHing the suggestion.
+ * @param onUpdate   - Called with the locally-merged suggestion after a successful PATCH.
+ */
 function SuggestionPanel({
   suggestion,
   sessionId,
@@ -60,6 +77,7 @@ function SuggestionPanel({
   const [editContent, setEditContent] = useState(suggestion.suggested_content);
   const [tab, setTab] = useState<"current" | "suggested">("suggested");
 
+  /** PATCH the suggestion and propagate the merged result via `onUpdate`. */
   async function patch(body: Partial<EditSuggestion>) {
     const res = await fetch(
       `/api/sessions/${sessionId}/suggestions/${suggestion.id}`,
@@ -192,6 +210,13 @@ function SuggestionPanel({
 }
 
 /* ─── Doc Section - Side by side with suggestion ─────────────────────── */
+
+/**
+ * Renders one documentation section.  When `suggestion`, `sessionId`, and
+ * `onUpdate` are all provided, the section is highlighted and a full-height
+ * `SuggestionPanel` is rendered alongside it; otherwise only the section
+ * content is shown.
+ */
 function DocBlock({
   section,
   suggestion,
@@ -243,6 +268,14 @@ function DocBlock({
 }
 
 /* ─── Main Page ──────────────────────────────────────────────────────── */
+
+/**
+ * Root page (`/`): documentation browser with a floating query bar.
+ *
+ * Displays the full doc tree in the main area and renders a right sidebar
+ * with AI suggestions after a query is submitted.  Saving applies approved
+ * suggestions back to the server cache and reloads the current page content.
+ */
 export default function Home() {
   const [query, setQuery] = useState("");
   const [retrievalMode] = useState<"triage" | "rag" | "hybrid" | "auto">("auto");
@@ -286,6 +319,7 @@ export default function Home() {
     }
   }, [session?.session_id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  /** Merge an updated suggestion into the current session state. */
   const handleUpdate = (updated: EditSuggestion) => {
     setSession((prev) =>
       prev
@@ -299,6 +333,7 @@ export default function Home() {
     );
   };
 
+  /** Submit the query form, run the pipeline, and update session state. */
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!query.trim()) return;
@@ -331,6 +366,7 @@ export default function Home() {
     }
   }
 
+  /** Apply approved suggestions to the server cache and reload the current page's sections. */
   const handleSave = async () => {
     if (!session) return;
     setSaving(true);

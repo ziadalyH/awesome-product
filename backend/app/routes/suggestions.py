@@ -1,3 +1,5 @@
+"""API routes for submitting queries, managing sessions, and applying suggestions."""
+
 import copy
 import json
 import logging
@@ -18,6 +20,15 @@ VALID_MODES = ("triage", "rag", "hybrid", "auto")
 
 @router.post("/query")
 async def submit_query(request: Request, body: QueryRequest):
+    """Run the pipeline for a user query and return a new session with suggestions.
+
+    Args:
+        body: Contains ``query`` and ``retrieval_mode``.
+
+    Raises:
+        HTTPException: 400 for invalid retrieval mode; 503 if RAG index is not ready;
+            500 on pipeline error.
+    """
     state = request.app.state
 
     if body.retrieval_mode not in VALID_MODES:
@@ -64,11 +75,17 @@ async def submit_query(request: Request, body: QueryRequest):
 
 @router.get("/sessions")
 async def list_sessions(request: Request):
+    """Return all sessions sorted by creation time (newest first)."""
     return request.app.state.store.get_all_sessions()
 
 
 @router.get("/sessions/{session_id}")
 async def get_session_by_id(request: Request, session_id: str):
+    """Fetch a single session by ID.
+
+    Raises:
+        HTTPException: 404 if the session is not found.
+    """
     session = request.app.state.store.get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -79,6 +96,14 @@ async def get_session_by_id(request: Request, session_id: str):
 async def update_suggestion(
     request: Request, session_id: str, suggestion_id: str, body: UpdateSuggestionRequest
 ):
+    """Partially update a suggestion's status or content.
+
+    Args:
+        body: Fields to update; unset fields are left unchanged.
+
+    Raises:
+        HTTPException: 404 if the session or suggestion is not found.
+    """
     store = request.app.state.store
     session = store.get_session(session_id)
     if not session:
@@ -98,6 +123,14 @@ async def update_suggestion(
 
 @router.post("/sessions/{session_id}/save")
 async def save_session(request: Request, session_id: str):
+    """Apply approved suggestions to the doc cache and rebuild the RAG index.
+
+    Writes updated sections to ``docs_cache.json``, updates in-memory docs,
+    and triggers ``rag.build()`` so subsequent queries reflect the changes.
+
+    Raises:
+        HTTPException: 404 if the session is not found.
+    """
     state = request.app.state
     session = state.store.get_session(session_id)
     if not session:

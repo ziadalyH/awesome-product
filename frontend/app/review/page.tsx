@@ -3,8 +3,10 @@
 import { useState, useEffect, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 
+/** Approval lifecycle state of a suggestion. */
 type SuggestionStatus = "pending" | "approved" | "rejected";
 
+/** An AI-generated proposal to update a single documentation section. */
 interface EditSuggestion {
   id: string;
   file: string;
@@ -15,6 +17,7 @@ interface EditSuggestion {
   status: SuggestionStatus;
 }
 
+/** A pipeline session loaded from `GET /api/sessions/:id`. */
 interface Session {
   session_id: string;
   query: string;
@@ -23,6 +26,10 @@ interface Session {
   saved: boolean;
 }
 
+/**
+ * Full-page review view for a single session.  Displays a side-by-side diff
+ * for each suggestion and provides approve/reject/edit/save actions.
+ */
 function ReviewContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -53,6 +60,12 @@ function ReviewContent() {
       });
   }, [sessionId]);
 
+  /**
+   * PATCH a suggestion and merge the server response into local session state.
+   *
+   * @param suggestionId - ID of the suggestion to update.
+   * @param patch        - Partial update payload (status and/or suggested_content).
+   */
   async function updateSuggestion(
     suggestionId: string,
     patch: { status?: SuggestionStatus; suggested_content?: string }
@@ -79,16 +92,19 @@ function ReviewContent() {
     );
   }
 
+  /** Enter inline-edit mode for the given suggestion. */
   function startEdit(suggestion: EditSuggestion) {
     setEditingId(suggestion.id);
     setEditContent(suggestion.suggested_content);
   }
 
+  /** Save the in-progress edit and exit inline-edit mode. */
   async function submitEdit(suggestionId: string) {
     await updateSuggestion(suggestionId, { suggested_content: editContent });
     setEditingId(null);
   }
 
+  /** Apply approved suggestions to the server and navigate to `/saved`. */
   async function handleSave() {
     setSaving(true);
     const res = await fetch(`/api/sessions/${sessionId}/save`, { method: "POST" });
@@ -248,6 +264,7 @@ function ReviewContent() {
   );
 }
 
+/** Pill badge for suggestion status used in the review card header. */
 function StatusBadge({ status }: { status: SuggestionStatus }) {
   const styles: Record<SuggestionStatus, string> = {
     pending: "bg-yellow-100 text-yellow-700",
@@ -261,6 +278,10 @@ function StatusBadge({ status }: { status: SuggestionStatus }) {
   );
 }
 
+/**
+ * Next.js page component for `/review`.  Wraps `ReviewContent` in a
+ * `Suspense` boundary so `useSearchParams` works in streaming mode.
+ */
 export default function ReviewPage() {
   return (
     <Suspense fallback={<div className="py-20 text-center text-gray-500">Loading…</div>}>

@@ -21,6 +21,8 @@ pip install -r requirements.txt
 uvicorn app.main:app --port 8000 --reload
 ```
 
+> On first startup, the backend scrapes the OpenAI Agents SDK documentation and generates `docs_cache.json` and `embeddings_cache.json` automatically. This takes a minute — subsequent starts load from cache instantly.
+
 ### 2. Frontend
 
 ```bash

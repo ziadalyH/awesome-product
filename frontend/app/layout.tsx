@@ -6,6 +6,9 @@ export const metadata: Metadata = {
   description: "AI-powered documentation update assistant for OpenAI Agents SDK",
 };
 
+/**
+ * Root layout that wraps every page with global styles and a shared HTML shell.
+ */
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">

@@ -4,8 +4,11 @@ import { useState, useEffect, useCallback, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 
 /* ─── Types ─────────────────────────────────────────────────────────── */
+
+/** Approval lifecycle state of a suggestion. */
 type SuggestionStatus = "pending" | "approved" | "rejected";
 
+/** An AI-generated proposal to update a single documentation section. */
 interface EditSuggestion {
   id: string;
   file: string;
@@ -16,6 +19,7 @@ interface EditSuggestion {
   status: SuggestionStatus;
 }
 
+/** A pipeline session returned by `POST /api/query`. */
 interface Session {
   session_id: string;
   query: string;
@@ -23,6 +27,7 @@ interface Session {
   saved: boolean;
 }
 
+/** A single parsed section of a documentation page. */
 interface DocSection {
   id: string;
   file: string;
@@ -34,6 +39,7 @@ interface DocSection {
 
 /* ─── Status badge ───────────────────────────────────────────────────── */
 
+/** Pill badge that colours itself based on suggestion status. */
 function Badge({ status }: { status: SuggestionStatus }) {
   const cls = {
     pending: "bg-yellow-100 text-yellow-700",
@@ -49,6 +55,14 @@ function Badge({ status }: { status: SuggestionStatus }) {
 
 /* ─── Inline suggestion panel ────────────────────────────────────────── */
 
+/**
+ * Inline card for a single suggestion with tab-based current/suggested view,
+ * inline editing, and approve/reject actions.
+ *
+ * @param suggestion - The suggestion to display.
+ * @param sessionId  - Parent session ID used when PATCHing the suggestion.
+ * @param onUpdate   - Called with the locally-merged suggestion after a successful PATCH.
+ */
 function SuggestionPanel({
   suggestion,
   sessionId,
@@ -62,6 +76,7 @@ function SuggestionPanel({
   const [editContent, setEditContent] = useState(suggestion.suggested_content);
   const [tab, setTab] = useState<"current" | "suggested">("suggested");
 
+  /** PATCH the suggestion and propagate the merged result via `onUpdate`. */
   async function patch(body: Partial<EditSuggestion>) {
     const res = await fetch(
       `/api/sessions/${sessionId}/suggestions/${suggestion.id}`,
@@ -195,6 +210,10 @@ function SuggestionPanel({
 
 /* ─── Single doc section with optional suggestion ───────────────────── */
 
+/**
+ * Renders one documentation section.  When a `suggestion` is provided, the
+ * section is highlighted by status and the `SuggestionPanel` is appended below.
+ */
 function DocBlock({
   section,
   suggestion,
@@ -238,6 +257,12 @@ function DocBlock({
 
 /* ─── Main editor ────────────────────────────────────────────────────── */
 
+/**
+ * Core editor view: sidebar navigation + scrollable doc viewer with inline
+ * suggestion panels.  Loaded only after a valid `sessionId` is confirmed.
+ *
+ * @param sessionId - UUID of the session to load from `GET /api/sessions/:id`.
+ */
 function EditorInner({ sessionId }: { sessionId: string }) {
   const router = useRouter();
   const [session, setSession] = useState<Session | null>(null);
@@ -425,6 +450,10 @@ function EditorInner({ sessionId }: { sessionId: string }) {
 
 /* ─── Page entry ─────────────────────────────────────────────────────── */
 
+/**
+ * Inner page component that reads the `session` query param and renders
+ * `EditorInner`, or an error prompt when the param is missing.
+ */
 function EditorPageInner() {
   const params = useSearchParams();
   const sessionId = params.get("session");
@@ -441,6 +470,10 @@ function EditorPageInner() {
   return <EditorInner sessionId={sessionId} />;
 }
 
+/**
+ * Next.js page component for `/editor`.  Wraps `EditorPageInner` in a
+ * `Suspense` boundary to allow `useSearchParams` to work in streaming mode.
+ */
 export default function EditorPage() {
   return (
     <Suspense fallback={<div className="p-8 text-gray-400">Loading…</div>}>

@@ -1,3 +1,9 @@
+"""FastAPI application entry point.
+
+Initialises shared resources (doc cache, RAG index, retrievers) during
+startup via the ``lifespan`` context manager, then mounts the API routers.
+"""
+
 import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
@@ -20,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """FastAPI lifespan handler: loads docs and builds the RAG index on startup."""
     doc_fetcher = DocFetcher()
     logger.info("Loading documentation...")
     await doc_fetcher.fetch_docs()
@@ -78,4 +85,5 @@ app.include_router(docs_router, prefix="/api")
 
 @app.get("/health")
 async def health(request: Request):
+    """Return service health status and the number of loaded doc pages."""
     return {"status": "ok", "docs_loaded": len(request.app.state.doc_fetcher.docs)}

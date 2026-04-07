@@ -16,6 +16,15 @@ EMBEDDINGS_CACHE_PATH = os.path.join(
 
 
 def _cosine_similarity(a: List[float], b: List[float]) -> float:
+    """Return the cosine similarity between two embedding vectors.
+
+    Args:
+        a: First embedding vector.
+        b: Second embedding vector.
+
+    Returns:
+        Similarity score in ``[0.0, 1.0]``; 0.0 if either vector is zero.
+    """
     dot = sum(x * y for x, y in zip(a, b))
     norm_a = math.sqrt(sum(x * x for x in a))
     norm_b = math.sqrt(sum(x * x for x in b))
@@ -25,7 +34,18 @@ def _cosine_similarity(a: List[float], b: List[float]) -> float:
 
 
 class RagRetriever(BaseRetriever):
+    """Retrieves relevant doc sections using OpenAI embeddings and cosine similarity.
+
+    Call ``build()`` once to embed all sections (results are cached to disk).
+    Then use ``retrieve()`` or ``retrieve_scored()`` for each query.
+    """
+
     def __init__(self, embedding_model: str = "text-embedding-3-small", top_k: int = 10):
+        """
+        Args:
+            embedding_model: OpenAI embedding model name.
+            top_k: Default number of top sections to return.
+        """
         self.embedding_model = embedding_model
         self.top_k = top_k
         self._client: Optional[AsyncOpenAI] = None
@@ -35,11 +55,20 @@ class RagRetriever(BaseRetriever):
 
     @property
     def client(self) -> AsyncOpenAI:
+        """Lazily-initialised ``AsyncOpenAI`` client."""
         if self._client is None:
             self._client = AsyncOpenAI()
         return self._client
 
     async def build(self, docs: Dict[str, List[DocSection]]) -> None:
+        """Embed all doc sections and cache results to disk.
+
+        Loads from ``embeddings_cache.json`` if it exists and is up-to-date;
+        otherwise calls the OpenAI embeddings API in batches of 100.
+
+        Args:
+            docs: Full documentation keyed by page ID.
+        """
         cache_path = os.path.abspath(EMBEDDINGS_CACHE_PATH)
         all_sections: Dict[str, str] = {
             section.id: f"{section.section_title}\n\n{section.content}"
@@ -91,6 +120,18 @@ class RagRetriever(BaseRetriever):
         return [sid for sid, _ in results]
 
     async def retrieve_scored(self, query: str, top_k: Optional[int] = None) -> List[Tuple[str, float]]:
+        """Return ``(section_id, score)`` tuples sorted by descending similarity.
+
+        Args:
+            query: Query text to embed.
+            top_k: Number of results; defaults to ``self.top_k``.
+
+        Returns:
+            List of ``(section_id, cosine_similarity)`` pairs.
+
+        Raises:
+            RuntimeError: If ``build()`` has not been called first.
+        """
         if not self._ready:
             raise RuntimeError("RagRetriever.build() must be called before retrieve()")
         k = top_k if top_k is not None else self.top_k
@@ -104,6 +145,7 @@ class RagRetriever(BaseRetriever):
         return scores[:k]
 
     def invalidate_cache(self) -> None:
+        """Delete the on-disk embeddings cache and reset in-memory state."""
         cache_path = os.path.abspath(EMBEDDINGS_CACHE_PATH)
         if os.path.exists(cache_path):
             os.remove(cache_path)

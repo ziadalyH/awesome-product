@@ -1,3 +1,5 @@
+"""Proxy route that serves the upstream MkDocs site with injected AI suggestion UI."""
+
 import httpx
 from fastapi import APIRouter
 from fastapi.responses import HTMLResponse
@@ -257,6 +259,15 @@ SUGGESTION_CSS = """
 
 @router.get("/proxy/docs")
 async def proxy_docs(page: str = ""):
+    """Fetch a documentation page from the upstream site and inject suggestion UI.
+
+    Resolves relative asset URLs via a ``<base>`` tag, injects ``EARLY_SCRIPT``
+    (cross-origin navigation fix + suggestion overlay JS) and ``SUGGESTION_CSS``
+    into the page ``<head>``, then returns the modified HTML.
+
+    Args:
+        page: Relative page path (e.g. ``"tools"``); empty string for the index.
+    """
     url = f"{DOCS_BASE}/{page}/" if page else f"{DOCS_BASE}/"
 
     async with httpx.AsyncClient(follow_redirects=True, timeout=15) as client:

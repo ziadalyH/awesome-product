@@ -1,3 +1,5 @@
+"""Validator stage: rejects invalid or malicious queries before the pipeline runs."""
+
 import logging
 from pydantic import BaseModel
 from agents import Agent, Runner
@@ -6,17 +8,37 @@ from app.pipeline.context import PipelineContext
 
 
 class QueryValidationResult(BaseModel):
+    """Structured output from the query-validation agent.
+
+    Attributes:
+        is_valid: True if the query is a legitimate documentation update request.
+        reason: Brief explanation of the validation decision.
+        is_documentation_related: False if the query is entirely off-topic.
+    """
+
     is_valid: bool
     reason: str
     is_documentation_related: bool
 
 
 class ValidatorStage(BaseStage):
+    """Pipeline stage that validates and security-screens the user query.
+
+    Raises ``StageAbortError`` for invalid, off-topic, or potentially malicious
+    queries, preventing downstream LLM calls.
+    """
+
     def __init__(self, model: str, logger: logging.Logger):
+        """
+        Args:
+            model: OpenAI chat model used by the validation agent.
+            logger: Logger instance for diagnostic output.
+        """
         self._model = model
         self._logger = logger
 
     def _build_agent(self) -> Agent:
+        """Build the query-validation agent with security-focused instructions."""
         return Agent(
             name="Query Validator",
             model=self._model,
@@ -49,6 +71,17 @@ Be strict: When in doubt, mark as invalid.""",
         )
 
     async def run(self, ctx: PipelineContext) -> PipelineContext:
+        """Validate ``ctx.query`` and abort the pipeline if it is rejected.
+
+        Args:
+            ctx: Current pipeline context.
+
+        Returns:
+            Updated context with ``validation_reason`` and ``is_documentation_related`` set.
+
+        Raises:
+            StageAbortError: If the query is invalid or the agent returns no output.
+        """
         try:
             agent = self._build_agent()
             result = await Runner.run(agent, input=ctx.query)

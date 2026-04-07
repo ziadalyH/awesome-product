@@ -1,3 +1,5 @@
+"""Editor stage: generates edit suggestions by driving an LLM agent with tool calls."""
+
 import uuid
 import logging
 from typing import Dict, List
@@ -64,11 +66,27 @@ def submit_suggestion(
 
 
 class EditorStage(BaseStage):
+    """Pipeline stage that generates documentation edit suggestions.
+
+    The editor agent calls ``get_section`` to read each target section and
+    ``submit_suggestion`` to record proposed changes into ``ctx.suggestions``.
+    """
+
     def __init__(self, model: str, logger: logging.Logger):
+        """
+        Args:
+            model: OpenAI chat model used by the editor agent.
+            logger: Logger instance for diagnostic output.
+        """
         self._model = model
         self._logger = logger
 
     def _build_agent(self, target_sections: List[str]) -> Agent:
+        """Construct the editor agent with the target section list in its instructions.
+
+        Args:
+            target_sections: Ordered list of section IDs to process.
+        """
         section_list = "\n".join(f"- {sid}" for sid in target_sections)
         return Agent(
             name="Editor Agent",
@@ -99,6 +117,14 @@ After processing all sections, respond with "Done processing all sections."
         )
 
     async def run(self, ctx: PipelineContext) -> PipelineContext:
+        """Run the editor agent and populate ``ctx.suggestions`` with edit proposals.
+
+        Args:
+            ctx: Current pipeline context with ``target_section_ids`` populated.
+
+        Returns:
+            Context with ``suggestions`` filled in by the agent's tool calls.
+        """
         target_section_ids = ctx.target_section_ids
         agent = self._build_agent(target_section_ids)
         max_turns = len(target_section_ids) * 3 + 5

@@ -14,23 +14,50 @@ from app.pipeline.retrieval.rag import RagRetriever
 
 
 class _IntentResult(BaseModel):
+    """Structured output from the intent-extraction agent."""
+
     code_patterns: List[str]
     reasoning: str
 
 
 class _FilterResult(BaseModel):
+    """Structured output from the LLM relevance filter."""
+
     section_ids: List[str]
     reasoning: str
 
 
 class HybridRetriever(BaseRetriever):
+    """Combines RAG, code scanning, and LLM filtering for high-precision retrieval.
+
+    Pipeline:
+        1. Intent extraction — identify exact code patterns to scan for.
+        2. Code scan — find sections containing those patterns.
+        3. RAG retrieval — semantic search over all sections.
+        4. LLM filter — keep only genuinely relevant candidates.
+    """
+
     def __init__(self, rag: RagRetriever, model: str = "gpt-4o-mini", rag_top_k: int = 20):
+        """
+        Args:
+            rag: A pre-built ``RagRetriever`` instance.
+            model: Chat model used by the intent and filter agents.
+            rag_top_k: Candidate pool size for the RAG pass.
+        """
         self._rag = rag
         self._model = model
         self._rag_top_k = rag_top_k
         self.logger = logging.getLogger(__name__)
 
     async def _extract_intent(self, query: str) -> List[str]:
+        """Use an LLM to extract concrete code identifiers from the change request.
+
+        Args:
+            query: User's change-request string.
+
+        Returns:
+            List of exact code pattern strings to search for; empty on failure.
+        """
         agent = Agent(
             name="Intent Extractor",
             model=self._model,
@@ -63,6 +90,15 @@ If no specific code patterns can be inferred, return an empty list.""",
         return []
 
     def _code_scan(self, patterns: List[str], docs: Dict[str, List[DocSection]]) -> List[str]:
+        """Return IDs of sections whose code blocks contain any of ``patterns``.
+
+        Args:
+            patterns: Exact substrings to search for.
+            docs: Full documentation keyed by page ID.
+
+        Returns:
+            List of matching section IDs.
+        """
         if not patterns:
             return []
         hits: List[str] = []
@@ -78,6 +114,16 @@ If no specific code patterns can be inferred, return an empty list.""",
     async def _llm_filter(
         self, query: str, candidate_ids: List[str], docs: Dict[str, List[DocSection]]
     ) -> List[str]:
+        """Filter candidate section IDs down to those that genuinely need updating.
+
+        Args:
+            query: User's change-request string.
+            candidate_ids: Section IDs from the code scan + RAG pass.
+            docs: Full documentation for content lookup.
+
+        Returns:
+            Subset of ``candidate_ids`` confirmed relevant by the LLM.
+        """
         section_map: Dict[str, DocSection] = {
             s.id: s for page_sections in docs.values() for s in page_sections
         }
@@ -133,6 +179,7 @@ Return:
         docs: Dict[str, List[DocSection]],
         section_index: List[Dict],
     ) -> List[str]:
+        """Run the full hybrid retrieval pipeline and return verified section IDs."""
         patterns = await self._extract_intent(query)
 
         rag_results = await self._rag.retrieve_scored(query, top_k=self._rag_top_k)

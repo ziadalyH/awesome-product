@@ -23,6 +23,13 @@ from app.pipeline.stages.editor import EditorStage
 
 
 class Pipeline:
+    """Orchestrates the four-stage documentation-update pipeline.
+
+    Stages: ValidatorStage → retriever.retrieve → PreCheckStage → EditorStage.
+    A ``StageAbortError`` from any stage halts the pipeline and returns an
+    empty suggestion list.
+    """
+
     def __init__(
         self,
         retriever: BaseRetriever,
@@ -40,6 +47,15 @@ class Pipeline:
         query: str,
         docs: Dict[str, List[DocSection]],
     ) -> List[EditSuggestion]:
+        """Execute the full pipeline and return generated edit suggestions.
+
+        Args:
+            query: User's natural-language change description.
+            docs: All loaded documentation sections keyed by page ID.
+
+        Returns:
+            List of ``EditSuggestion`` objects; empty if aborted or on error.
+        """
         section_index = [
             {"id": s.id, "page": s.file, "section": s.section_title}
             for page_sections in docs.values()

@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+/** Lightweight summary of a suggestion (only fields needed on the saved page). */
 interface EditSuggestion {
   id: string;
   file: string;
@@ -7,6 +8,7 @@ interface EditSuggestion {
   status: "pending" | "approved" | "rejected";
 }
 
+/** A session summary as returned by `GET /api/sessions`. */
 interface Session {
   session_id: string;
   query: string;
@@ -15,6 +17,10 @@ interface Session {
   saved: boolean;
 }
 
+/**
+ * Server-side data fetch for all sessions.  Returns an empty array on error
+ * so the page degrades gracefully when the backend is unavailable.
+ */
 async function getSessions(): Promise<Session[]> {
   try {
     const res = await fetch("http://localhost:8000/api/sessions", {
@@ -27,6 +33,11 @@ async function getSessions(): Promise<Session[]> {
   }
 }
 
+/**
+ * Next.js page component for `/saved`.  Lists all sessions that have been
+ * saved (i.e., approved suggestions applied to the doc cache) with a summary
+ * of suggestion counts and a link to re-open each session in the editor.
+ */
 export default async function SavedPage() {
   const sessions = await getSessions();
   const saved = sessions.filter((s) => s.saved);

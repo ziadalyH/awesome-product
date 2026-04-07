@@ -1,3 +1,5 @@
+"""Pre-check stage: filters out sections where the requested change is already applied."""
+
 import logging
 from typing import Dict, List
 from pydantic import BaseModel
@@ -8,16 +10,45 @@ from app.models import DocSection
 
 
 class PreCheckResult(BaseModel):
+    """Structured output from the pre-check agent.
+
+    Attributes:
+        already_applied_ids: Section IDs where the change is already fully reflected.
+        reasoning: One-line explanation of the determination.
+    """
+
     already_applied_ids: List[str]
     reasoning: str
 
 
 class PreCheckStage(BaseStage):
+    """Pipeline stage that removes sections already reflecting the requested change.
+
+    Aborts the pipeline (via ``StageAbortError``) when all target sections are
+    already up-to-date, avoiding unnecessary editor LLM calls.
+    """
+
     def __init__(self, model: str, logger: logging.Logger):
+        """
+        Args:
+            model: OpenAI chat model used by the pre-check agent.
+            logger: Logger instance for diagnostic output.
+        """
         self._model = model
         self._logger = logger
 
     async def run(self, ctx: PipelineContext) -> PipelineContext:
+        """Filter ``ctx.target_section_ids`` to those still needing updates.
+
+        Args:
+            ctx: Current pipeline context with target section IDs populated.
+
+        Returns:
+            Context with already-applied sections removed from ``target_section_ids``.
+
+        Raises:
+            StageAbortError: If all sections already reflect the requested change.
+        """
         section_ids = ctx.target_section_ids
         if not section_ids:
             return ctx

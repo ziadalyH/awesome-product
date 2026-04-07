@@ -1,3 +1,5 @@
+"""Documentation fetcher: scrapes and caches OpenAI Agents SDK docs as structured sections."""
+
 import asyncio
 import httpx
 import json
@@ -12,6 +14,15 @@ CACHE_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "docs_cache.jso
 
 
 def _make_id(page_id: str, section_title: str) -> str:
+    """Return a stable section ID from a page ID and section heading.
+
+    Args:
+        page_id: The doc page slug (e.g. ``"tools"``).
+        section_title: The raw heading text.
+
+    Returns:
+        A string in the form ``"<page_id>#<slugified-title>"``.
+    """
     slug = re.sub(r"[^\w\s-]", "", section_title.lower())
     slug = re.sub(r"[\s]+", "-", slug).strip("-")
     return f"{page_id}#{slug}"
@@ -54,6 +65,12 @@ DOC_PAGES = [
 
 
 class DocFetcher:
+    """Fetches and caches OpenAI Agents SDK documentation as ``DocSection`` objects.
+
+    On first run the pages listed in ``DOC_PAGES`` are scraped and saved to
+    ``docs_cache.json``.  Subsequent runs load directly from the cache.
+    """
+
     def __init__(self):
         self.docs: Dict[str, List[DocSection]] = {}
         self.logger = logging.getLogger(__name__)
@@ -81,6 +98,7 @@ class DocFetcher:
         self.logger.info(f"Docs cached to: {cache}")
 
     async def _scrape_docs(self):
+        """Scrape all pages in ``DOC_PAGES`` concurrently and populate ``self.docs``."""
         async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
             for page in DOC_PAGES:
                 url = f"{BASE_URL}/{page}/" if page else f"{BASE_URL}/"
@@ -94,6 +112,7 @@ class DocFetcher:
                 await asyncio.sleep(0.1)
 
     async def _fetch_page(self, client: httpx.AsyncClient, url: str) -> str:
+        """Fetch raw HTML for a URL; returns empty string on non-200 or error."""
         try:
             resp = await client.get(url)
             if resp.status_code == 200:
@@ -105,6 +124,15 @@ class DocFetcher:
             return ""
 
     def _parse_html(self, html: str, page_id: str) -> List[DocSection]:
+        """Parse an HTML page and split it into ``DocSection`` objects by heading.
+
+        Args:
+            html: Raw HTML string for the page.
+            page_id: Slug identifier for the page (used in section IDs).
+
+        Returns:
+            Ordered list of ``DocSection`` objects extracted from the article element.
+        """
         soup = BeautifulSoup(html, "html.parser")
         article = soup.find("article") or soup.find("main")
         if not article or not isinstance(article, Tag):
