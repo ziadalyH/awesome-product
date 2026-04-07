@@ -62,13 +62,9 @@ Next.js (port 3000) → FastAPI backend (port 8000) → AI agent pipeline
 
 Sessions live in a plain Python dict and are lost on restart. A production version would use a persistent store (PostgreSQL or SQLite) with the `SessionStore` ABC already in place — swapping the implementation is one class.
 
-### Docs stored as a flat JSON file
+### Docs and Embeddings stored as a flat JSON files
 
-Approved suggestions overwrite `docs_cache.json` directly. A production version would store docs in a database, refresh on a schedule or via webhook, and open a pull request via the GitHub API instead of writing to a local file.
-
-### Embeddings stored as a flat JSON file
-
-`embeddings_cache.json` is rebuilt from scratch on every save. A production version would use a vector database (Pinecone, ChromaDB, pgvector) and only re-embed changed sections.
+Approved suggestions overwrite `docs_cache.json` directly. A production version would store docs in a database, refresh on a schedule or via webhook, and open a pull request via the GitHub API instead of writing to a local file.,and `embeddings_cache.json` is rebuilt from scratch on every save. A production version would use a vector database (Pinecone, ChromaDB, pgvector) and only re-embed changed sections.
 
 ### Section matching uses title as join key
 
